@@ -1,1 +1,1 @@
-# luoysq-MAX.github.io
+# luoysq-max.github.io
