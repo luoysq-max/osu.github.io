@@ -1,0 +1,2160 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>RhythmBeat · 类 osu! 音游</title>
+<style>
+  :root{
+    --bg:#07080d;
+    --panel:rgba(14,16,26,.94);
+    --panel2:rgba(255,255,255,.045);
+    --text:#eaeef8;
+    --muted:#8b93a8;
+    --line:rgba(255,255,255,.10);
+    --accent:#ff4d6d;
+    --accent2:#4dd2ff;
+    --good:#22d3a5;
+    --cur-line:#ffffff;
+    --cur-fill:rgba(255,255,255,.18);
+  }
+  html[data-theme="light"]{
+    --bg:#eef1f7;
+    --panel:rgba(255,255,255,.96);
+    --panel2:rgba(0,0,0,.035);
+    --text:#151a26;
+    --muted:#5d6578;
+    --line:rgba(0,0,0,.10);
+    --cur-line:#2b3245;
+    --cur-fill:rgba(20,24,36,.14);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:"Inter","PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;}
+  canvas{display:block;position:fixed;inset:0;width:100%;height:100%;cursor:none;touch-action:none}
+
+  /* 游戏内光标：由指针事件直接驱动，不经过渲染循环，因此永远跟手 */
+  #cur{position:fixed;left:0;top:0;width:34px;height:34px;margin:-17px 0 0 -17px;
+    pointer-events:none;z-index:15;display:none;will-change:transform;
+    transform:translate3d(-200px,-200px,0)}
+  #cur.on{display:block}
+  #cur i{position:absolute;inset:0;border-radius:50%;border:2px solid var(--cur-line);
+    background:var(--cur-fill);transition:transform .10s ease-out;transform:scale(1)}
+  #cur.hit i{transform:scale(1.6);transition:transform .03s ease-out}
+  #cur b{position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;
+    border-radius:50%;background:var(--cur-line)}
+
+  .overlay{
+    position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+    padding:20px;overflow:auto;
+    background:
+      radial-gradient(900px 520px at 50% 12%, rgba(255,77,109,.13), transparent 65%),
+      radial-gradient(760px 480px at 82% 92%, rgba(77,210,255,.10), transparent 62%),
+      var(--bg);
+  }
+  .overlay.hidden{display:none}
+  .hidden{display:none !important}
+  .panel{
+    width:min(760px,100%);background:var(--panel);border:1px solid var(--line);
+    border-radius:20px;padding:26px 26px 22px;
+    box-shadow:0 30px 80px rgba(0,0,0,.42);
+    backdrop-filter:blur(14px);
+  }
+  .brand h1{margin:0;font-size:34px;letter-spacing:-.5px;font-weight:800}
+  .brand h1 span{color:var(--accent)}
+  .brand p{margin:6px 0 20px;color:var(--muted);font-size:13px}
+
+  .label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
+
+  .songs{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:18px}
+  .song{
+    text-align:left;cursor:pointer;border:1px solid var(--line);background:var(--panel2);
+    border-radius:13px;padding:12px 13px;color:var(--text);transition:.16s;position:relative;overflow:hidden;
+    font-family:inherit;
+  }
+  .song:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.24)}
+  .song.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset, 0 10px 26px rgba(255,77,109,.20)}
+  .song .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:7px;vertical-align:1px}
+  .song b{font-size:14px;font-weight:700;display:block;margin-bottom:3px}
+  .song small{color:var(--muted);font-size:11.5px}
+  .song .spark{position:absolute;right:-6px;bottom:-8px;height:44px;opacity:.22;display:flex;align-items:flex-end;gap:2px}
+  .song .spark i{width:3px;background:currentColor;border-radius:2px;display:block}
+
+  .diffs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .diff{
+    cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--text);
+    border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;transition:.16s;font-family:inherit;
+  }
+  .diff:hover{border-color:rgba(255,255,255,.24)}
+  .diff.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .diff em{font-style:normal;opacity:.7;font-weight:500;margin-left:5px;font-size:11.5px}
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{font-family:inherit}
+  .btn{
+    cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--text);
+    border-radius:11px;padding:12px 18px;font-size:13.5px;font-weight:600;transition:.16s;
+  }
+  .btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.26)}
+  .btn.primary{background:linear-gradient(135deg,#ff4d6d,#ff7a5c);border-color:transparent;color:#fff;padding:12px 30px;
+    box-shadow:0 12px 30px rgba(255,77,109,.32)}
+  .btn.primary:hover{box-shadow:0 16px 38px rgba(255,77,109,.42)}
+  .btn.ghost{background:transparent}
+
+  details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+  details.adv summary{cursor:pointer;font-size:13px;color:var(--muted);font-weight:600;list-style:none;user-select:none}
+  details.adv summary::-webkit-details-marker{display:none}
+  details.adv summary::before{content:"＋ ";color:var(--accent2)}
+  details.adv[open] summary::before{content:"－ "}
+  .advgrid{display:grid;gap:10px;margin-top:13px}
+  .advrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+  .filebtn{border:1px dashed var(--line);background:transparent;color:var(--text);border-radius:10px;
+    padding:9px 14px;font-size:12.5px;cursor:pointer;transition:.16s}
+  .filebtn:hover{border-color:var(--accent2);color:var(--accent2)}
+  .filebtn.ok{border-style:solid;border-color:var(--good);color:var(--good)}
+  /* .osz 里的多难度选择 */
+  .oszlist{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+  .oszlist button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;
+    padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit;transition:.14s}
+  .oszlist button:hover{border-color:var(--accent2);color:var(--accent2)}
+  .oszlist button.on{background:var(--accent2);border-color:var(--accent2);color:#04121a;font-weight:700}
+  input[type=range]{width:150px;accent-color:var(--accent)}
+
+  .tips{margin-top:16px;font-size:12px;color:var(--muted);line-height:1.8}
+  kbd{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11px;font-family:inherit}
+
+  /* ---- 结算 ---- */
+  .result{text-align:center}
+  .grade{font-size:96px;font-weight:900;line-height:1;letter-spacing:-4px;margin:4px 0 6px;
+    background:linear-gradient(180deg,#fff,#ffb84d);-webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 8px 30px rgba(255,184,77,.35))}
+  html[data-theme="light"] .grade{background:linear-gradient(180deg,#2b3245,#ff8a3d);-webkit-background-clip:text;background-clip:text}
+  .grade.fail{background:linear-gradient(180deg,#8b93a8,#4b5265);-webkit-background-clip:text;background-clip:text;filter:none}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;margin:22px 0}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:11px 8px}
+  .stat span{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  .stat b{font-size:19px;font-weight:800}
+  .stat.c300 b{color:#4dd2ff}.stat.c100 b{color:#22d3a5}.stat.c50 b{color:#ffb84d}.stat.cmiss b{color:#ff4d6d}
+  .judgebar{height:8px;border-radius:6px;overflow:hidden;display:flex;margin:4px 0 18px;background:var(--panel2)}
+  .judgebar i{display:block;height:100%}
+  .songs-pick{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px}
+
+  .pause-title{font-size:26px;font-weight:800;margin:0 0 4px}
+  .hint{font-size:12px;color:var(--muted);margin-bottom:18px}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);z-index:60;
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 18px;font-size:13px;
+    opacity:0;pointer-events:none;transition:.25s;box-shadow:0 16px 40px rgba(0,0,0,.4)}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .loading{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.55);color:#fff;font-size:14px;letter-spacing:.06em;backdrop-filter:blur(4px)}
+  .loading.on{display:flex}
+  @media (max-width:640px){
+    .panel{padding:20px 16px 16px;border-radius:16px}
+    .brand h1{font-size:26px}
+    .grade{font-size:74px}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="cv"></canvas>
+<div id="cur"><i></i><b></b></div>
+
+<!-- ================= 主菜单 ================= -->
+<div class="overlay" id="menuScreen">
+  <div class="panel">
+    <div class="brand">
+      <h1>Rhythm<span>Beat</span></h1>
+      <p>类 osu! standard 的网页音游 · 纯前端单文件 · 实时合成音乐</p>
+    </div>
+
+    <p class="label">选择曲目</p>
+    <div class="songs" id="songList"></div>
+
+    <p class="label">选择难度</p>
+    <div class="diffs" id="diffList"></div>
+
+    <div class="row">
+      <button class="btn primary" id="playBtn">开始游戏</button>
+      <button class="btn hidden" id="useCustomBtn">改用自定义谱面</button>
+      <button class="btn" id="autoBtn">Autoplay：关</button>
+      <button class="btn" id="nfBtn">不死模式：关</button>
+      <button class="btn" id="fpsBtn">帧率显示：开</button>
+      <button class="btn ghost" id="themeBtn">切换主题</button>
+    </div>
+
+    <details class="adv">
+      <summary>导入谱面（.osz 谱面包 / .osu + 音频）</summary>
+      <div class="advgrid">
+        <div class="advrow">
+          <button class="filebtn" id="pickOsz">① 选择 .osz 谱面包（推荐）</button>
+          <span>自动带出音频与全部难度</span>
+        </div>
+        <div class="advrow">
+          <button class="filebtn" id="pickOsu">② 或选单个 .osu 谱面</button>
+          <button class="filebtn" id="pickAudio">③ 再配一个音频文件</button>
+        </div>
+        <div class="advrow"><span id="importInfo">支持 osu!standard（Mode 0）的 HitCircle / Slider 起点</span></div>
+        <div class="advrow" id="oszRow" style="display:none">
+          <span>难度</span>
+          <div class="oszlist" id="oszList"></div>
+        </div>
+        <div class="advrow">
+          <span>音频偏移</span>
+          <input type="range" id="offsetRange" min="-300" max="300" step="5" value="0" />
+          <b id="offsetVal" style="color:var(--text)">0 ms</b>
+          <span style="opacity:.7">（觉得音符偏早/偏晚就调这里）</span>
+        </div>
+      </div>
+    </details>
+
+    <div class="tips">
+      <kbd>鼠标左键</kbd> / <kbd>Z</kbd> / <kbd>X</kbd> 击打 &nbsp;·&nbsp;
+      <kbd>空格</kbd> 暂停 &nbsp;·&nbsp; <kbd>R</kbd> 重开 &nbsp;·&nbsp; <kbd>Esc</kbd> 返回菜单<br>
+      圆圈收缩到与外圈重合的瞬间点击，越准分越高。
+    </div>
+  </div>
+</div>
+
+<!-- ================= 暂停 ================= -->
+<div class="overlay hidden" id="pauseScreen">
+  <div class="panel" style="width:min(420px,100%);text-align:center">
+    <p class="pause-title">已暂停</p>
+    <p class="hint">按 <kbd>空格</kbd> 继续</p>
+    <div class="row" style="justify-content:center">
+      <button class="btn primary" id="resumeBtn">继续</button>
+      <button class="btn" id="restartBtn">重新开始</button>
+      <button class="btn ghost" id="quitBtn">返回菜单</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 结算 ================= -->
+<div class="overlay hidden" id="resultScreen">
+  <div class="panel result">
+    <p class="label" id="resSong" style="margin-bottom:14px">—</p>
+    <div class="grade" id="grade">S</div>
+    <p class="hint" id="resSub">通关成功</p>
+    <div class="stats">
+      <div class="stat"><span>Score</span><b id="rScore">0</b></div>
+      <div class="stat"><span>Accuracy</span><b id="rAcc">0%</b></div>
+      <div class="stat"><span>Max Combo</span><b id="rCombo">0</b></div>
+      <div class="stat c300"><span>300</span><b id="r300">0</b></div>
+      <div class="stat c100"><span>100</span><b id="r100">0</b></div>
+      <div class="stat c50"><span>50</span><b id="r50">0</b></div>
+      <div class="stat cmiss"><span>Miss</span><b id="rMiss">0</b></div>
+    </div>
+    <div class="songs-pick"><span>判定分布</span><span id="rErr">平均误差 0ms</span></div>
+    <div class="judgebar" id="judgeBar"></div>
+    <div class="row" style="justify-content:center">
+      <button class="btn primary" id="againBtn">再来一次</button>
+      <button class="btn" id="backBtn">选择曲目</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="loading" id="loading">加载中…</div>
+
+<script>
+(function () {
+'use strict';
+
+/* ══════════════════════════════════════════════════════════
+   0. 基础工具
+   ══════════════════════════════════════════════════════════ */
+const VW = 512, VH = 384, TAU = Math.PI * 2;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp  = (a, b, t) => a + (b - a) * t;
+const $ = (id) => document.getElementById(id);
+
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+const COMBO_COLORS = ['#ff4d6d', '#ffb84d', '#4dd2ff', '#8b5cf6', '#22d3a5'];
+
+/* ══════════════════════════════════════════════════════════
+   1. 音频引擎（Web Audio 实时合成 + 统一时钟）
+   ══════════════════════════════════════════════════════════ */
+const Audio2 = {
+  ctx: null,
+  master: null,
+  bus: null,      // 每局重建的总线，断开即静音
+  delay: null,
+  sources: [],
+  noise: null,
+
+  init() {
+    if (this.ctx || this._failed) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { this._failed = true; toast('当前浏览器不支持 Web Audio，将以静音模式游玩'); return; }
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.72;
+
+      const comp = this.ctx.createDynamicsCompressor();
+      comp.threshold.value = -12; comp.knee.value = 24; comp.ratio.value = 6;
+      comp.attack.value = 0.003; comp.release.value = 0.25;
+      this.master.connect(comp);
+      comp.connect(this.ctx.destination);
+
+      // 白噪声缓冲（鼓组用）
+      const len = Math.floor(this.ctx.sampleRate * 0.8);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      this.noise = buf;
+    } catch (e) {
+      // 音频初始化失败不能让游戏挂掉，降级为静音
+      this.ctx = null;
+      this._failed = true;
+      toast('音频初始化失败，将以静音模式游玩');
+    }
+  },
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') {
+      try { const p = this.ctx.resume(); if (p && p.catch) p.catch(function () {}); } catch (e) { /* ignore */ }
+    }
+  },
+
+  /* 每局开始前建立总线：总线 -> master，附带一条延迟（混响感） */
+  openBus() {
+    this.closeBus();
+    const c = this.ctx;
+    this.bus = c.createGain();
+    this.bus.gain.value = 1;
+    this.bus.connect(this.master);
+
+    this.delay = c.createDelay(1.0);
+    this.delay.delayTime.value = 0.30;
+    const fb = c.createGain(); fb.gain.value = 0.30;
+    const wet = c.createGain(); wet.gain.value = 0.26;
+    this.delay.connect(fb); fb.connect(this.delay);
+    this.delay.connect(wet); wet.connect(this.bus);
+  },
+
+  closeBus() {
+    for (const s of this.sources) {
+      try { s.n.stop(0); } catch (e) { /* ignore */ }
+      try { s.n.disconnect(); } catch (e) { /* ignore */ }
+    }
+    this.sources.length = 0;
+    if (this.delay) { try { this.delay.disconnect(); } catch (e) {} this.delay = null; }
+    if (this.bus) { try { this.bus.disconnect(); } catch (e) {} this.bus = null; }
+  },
+
+  track(node, until) { this.sources.push({ n: node, until: until }); },
+
+  /* 回收已播完的节点，否则整首歌期间引用会累积到上千个 */
+  pruneSources() {
+    if (!this.ctx || !this.sources.length) return;
+    const now = this.ctx.currentTime;
+    this.sources = this.sources.filter(s => s.until > now);
+  },
+  now() { return this.ctx ? this.ctx.currentTime : 0; },
+
+  /* ---- 合成音色 ---- */
+  kick(t, vol) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(165, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.11);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * 0.95, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
+    o.connect(g); g.connect(this.bus);
+    o.start(t); o.stop(t + 0.34);
+    this.track(o, t + 0.4);
+  },
+
+  snare(t, vol) {
+    const c = this.ctx;
+    const s = c.createBufferSource(); s.buffer = this.noise; s.loop = true;
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.value = 1900; bp.Q.value = 0.7;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * 0.34, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
+    s.connect(bp); bp.connect(g); g.connect(this.bus);
+    s.start(t); s.stop(t + 0.22);
+
+    const o = c.createOscillator(), g2 = c.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(205, t);
+    g2.gain.setValueAtTime(vol * 0.16, t);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.10);
+    o.connect(g2); g2.connect(this.bus);
+    o.start(t); o.stop(t + 0.13);
+    this.track(s, t + 0.26); this.track(o, t + 0.2);
+  },
+
+
+  hat(t, vol, open) {
+    const c = this.ctx;
+    const s = c.createBufferSource(); s.buffer = this.noise; s.loop = true;
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7600;
+    const g = c.createGain();
+    const dur = open ? 0.19 : 0.048;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * 0.11, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(hp); hp.connect(g); g.connect(this.bus);
+    s.start(t); s.stop(t + dur + 0.05);
+    this.track(s, t + dur + 0.1);
+  },
+
+  bass(t, midi, dur, vol) {
+    const c = this.ctx;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const o1 = c.createOscillator(), o2 = c.createOscillator();
+    o1.type = 'sawtooth'; o1.frequency.value = f;
+    o2.type = 'square';   o2.frequency.value = f / 2;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5;
+    lp.frequency.setValueAtTime(1100, t);
+    lp.frequency.exponentialRampToValueAtTime(300, t + dur * 0.85);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * 0.30, t + 0.014);
+    g.gain.setValueAtTime(vol * 0.30, t + dur * 0.66);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(this.bus);
+    o1.start(t); o2.start(t);
+    o1.stop(t + dur + 0.06); o2.stop(t + dur + 0.06);
+    this.track(o1, t + dur + 0.1); this.track(o2, t + dur + 0.1);
+  },
+
+  lead(t, midi, dur, vol) {
+    const c = this.ctx;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const o1 = c.createOscillator(), o2 = c.createOscillator();
+    o1.type = 'square';   o1.frequency.value = f;
+    o2.type = 'triangle'; o2.frequency.value = f; o2.detune.value = 9;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(4200, t);
+    lp.frequency.exponentialRampToValueAtTime(1500, t + dur);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * 0.13, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o1.connect(lp); o2.connect(lp); lp.connect(g);
+    g.connect(this.bus);
+    if (this.delay) g.connect(this.delay);
+    o1.start(t); o2.start(t);
+    o1.stop(t + dur + 0.05); o2.stop(t + dur + 0.05);
+    this.track(o1, t + dur + 0.1); this.track(o2, t + dur + 0.1);
+  },
+
+  /* ---- 界面音效（走 master，菜单里也能响） ---- */
+  ui(freq, dur) {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime + 0.01;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(freq * 1.6, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.10, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════
+   2. 曲目定义与谱面生成
+   ══════════════════════════════════════════════════════════ */
+const RHYTHMS = [
+  [0, 1, 2, 3],
+  [0, 1, 2, 3],
+  [0, 1, 2, 2.5, 3],
+  [0, 0.5, 1, 2, 3],
+  [0, 1, 1.5, 2, 3, 3.5],
+  [0, 0.5, 1, 1.5, 2, 3],
+  [0, 1, 2, 3, 3.5],
+  [0, 0.75, 1.5, 2, 2.5, 3],
+  [0, 1, 2, 2.75, 3],
+  [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]
+];
+
+const DIFFS = [
+  { name: 'Easy',   radius: 40, preempt: 1500, w300: 112, w100: 165, w50: 215, keep: 'easy',   drain: 0.50, gain: 3.6, miss: -5.0, star: 1.7 },
+  { name: 'Normal', radius: 36, preempt: 1150, w300: 88,  w100: 138, w50: 182, keep: 'normal', drain: 0.82, gain: 3.1, miss: -6.5, star: 2.9 },
+  { name: 'Hard',   radius: 32, preempt: 850,  w300: 66,  w100: 108, w50: 148, keep: 'hard',   drain: 1.12, gain: 2.8, miss: -8.0, star: 4.2 },
+  { name: 'Expert', radius: 29, preempt: 660,  w300: 50,  w100: 84,  w50: 120, keep: 'expert', drain: 1.38, gain: 2.5, miss: -9.5, star: 5.5 }
+];
+
+const SONGS = [
+  { id: 'neon', name: 'Neon Pulse', artist: 'Synthwave · 140 BPM', bpm: 140, key: 57,
+    scale: [0, 3, 5, 7, 10], prog: [0, -4, 3, -2], seed: 1337, bars: 30, color: '#ff4d6d' },
+  { id: 'star', name: 'Starlight Drift', artist: 'Chillstep · 118 BPM', bpm: 118, key: 62,
+    scale: [0, 2, 4, 7, 9], prog: [0, -5, -3, -7], seed: 90210, bars: 26, color: '#4dd2ff' },
+  { id: 'crim', name: 'Crimson Rush', artist: 'Drum & Bass · 168 BPM', bpm: 168, key: 52,
+    scale: [0, 3, 5, 7, 10], prog: [0, -5, -4, -2], seed: 777001, bars: 40, color: '#ffb84d' }
+];
+
+/* 生成整首曲子的音频事件与旋律数据 */
+function buildMusic(def) {
+  const rnd = mulberry32(def.seed);
+  const beatMs = 60000 / def.bpm;
+  const INTRO = 1;   // 前奏留白（小节数），越短越早出第一个音符
+  const events = [], melody = [];
+  let deg = 0;
+
+  for (let bar = -INTRO; bar < def.bars; bar++) {
+    const t0 = (bar + INTRO) * 4 * beatMs;
+    const root = def.key + def.prog[((bar % def.prog.length) + def.prog.length) % def.prog.length];
+
+    // 鼓组
+    events.push({ t: t0, type: 'kick', vol: 1 });
+    events.push({ t: t0 + 2 * beatMs, type: 'kick', vol: 0.92 });
+    if (rnd() < 0.34) events.push({ t: t0 + 3.5 * beatMs, type: 'kick', vol: 0.62 });
+    events.push({ t: t0 + 1 * beatMs, type: 'snare', vol: 1 });
+    events.push({ t: t0 + 3 * beatMs, type: 'snare', vol: 1 });
+    for (let b = 0; b < 4; b += 0.5) {
+      events.push({ t: t0 + b * beatMs, type: 'hat', vol: b % 1 === 0 ? 0.9 : 0.5, open: b % 1 === 0.5 && rnd() < 0.18 });
+    }
+
+    // 贝斯
+    const bassPat = rnd() < 0.5 ? [0, 1.5, 2, 3.5] : [0, 1, 2, 3];
+    for (const b of bassPat) {
+      events.push({ t: t0 + b * beatMs, type: 'bass', midi: root - 12, dur: beatMs * 0.42, vol: 1 });
+    }
+
+    if (bar < 0) continue;
+
+    // 旋律（同时作为谱面音符来源）
+    const pattern = RHYTHMS[Math.floor(rnd() * RHYTHMS.length)];
+    for (let i = 0; i < pattern.length; i++) {
+      const pos = pattern[i];
+      if (pos === 0) deg = 0;
+      else deg += [-2, -1, -1, 0, 0, 1, 1, 2, 3, -3][Math.floor(rnd() * 10)];
+      deg = clamp(deg, -3, 7);
+      const oct = Math.floor(deg / 5), idx = ((deg % 5) + 5) % 5;
+      const midi = def.key + 12 + def.scale[idx] + oct * 12;
+      const t = t0 + pos * beatMs;
+      const nextPos = i + 1 < pattern.length ? pattern[i + 1] : 4;
+      const dur = clamp((nextPos - pos) * beatMs * 0.82, 60, beatMs * 1.2);
+      melody.push({ b: bar * 4 + pos, t: t, midi: midi });
+      events.push({ t: t, type: 'lead', midi: midi, dur: dur, vol: 1 });
+    }
+  }
+
+  // 尾奏
+  const endT = (def.bars + INTRO) * 4 * beatMs;
+  events.push({ t: endT, type: 'kick', vol: 1 });
+  events.push({ t: endT, type: 'bass', midi: def.key - 12, dur: beatMs * 1.8, vol: 1 });
+  events.push({ t: endT, type: 'lead', midi: def.key + 12, dur: beatMs * 2.4, vol: 1 });
+
+  events.sort((a, b) => a.t - b.t);
+  return {
+    events: events,
+    melody: melody,
+    beatMs: beatMs,
+    barMs: beatMs * 4,
+    durationMs: endT + beatMs * 4
+  };
+}
+
+/* 为音符分配坐标：沿随机方向游走，限制移动速度，避免重叠。
+   SAFE 是"圆的边缘"必须留出的上下边距（顶部 HUD 与底部误差条），
+   因此圆心范围要再减去半径，否则大圈仍会压住分数。 */
+const SAFE = { top: 58, bottom: 36 };
+function assignPositions(list, rnd, R) {
+  const yMin = SAFE.top + R, yMax = VH - SAFE.bottom - R;
+  const xMin = R + 10, xMax = VW - R - 10;
+  let px = VW / 2, py = (yMin + yMax) / 2, prevT = list.length ? list[0].t : 0;
+  for (let i = 0; i < list.length; i++) {
+    const n = list[i];
+    const dt = Math.max(70, n.t - prevT);
+    const maxD = clamp(72 + dt * 0.40, 90, 240);
+    const minD = 58;
+    let bx = px, by = py, bestS = -1;
+    for (let k = 0; k < 26; k++) {
+      const ang = rnd() * TAU;
+      const d = minD + rnd() * (maxD - minD);
+      const x = clamp(px + Math.cos(ang) * d, xMin, xMax);
+      const y = clamp(py + Math.sin(ang) * d, yMin, yMax);
+      let s = 1e9;
+      for (let j = Math.max(0, i - 6); j < i; j++) {
+        const o = list[j];
+        s = Math.min(s, Math.hypot(x - o.x, y - o.y));
+      }
+      if (s > bestS) { bestS = s; bx = x; by = y; }
+      if (s > R * 2.6) break;
+    }
+    n.x = bx; n.y = by;
+    px = bx; py = by; prevT = n.t;
+  }
+}
+
+/* 由旋律 + 难度生成可玩谱面 */
+function buildChart(music, diffIdx, def) {
+  const D = DIFFS[diffIdx];
+  const rnd = mulberry32((def.seed * 7919 + diffIdx * 131) >>> 0);
+  let list;
+
+  if (D.keep === 'easy')        list = music.melody.filter(n => Number.isInteger(n.b) && n.b % 2 === 0);
+  else if (D.keep === 'normal') list = music.melody.filter(n => Number.isInteger(n.b));
+  else                          list = music.melody.slice();
+
+  if (D.keep === 'expert') {
+    const extra = [];
+    for (let i = 0; i < list.length - 1; i++) {
+      const gap = list[i + 1].t - list[i].t;
+      if (gap >= music.beatMs * 0.85 && rnd() < 0.55) {
+        extra.push({ t: (list[i].t + list[i + 1].t) / 2, b: (list[i].b + list[i + 1].b) / 2, midi: list[i].midi, extra: true });
+      }
+    }
+    list = list.concat(extra).sort((a, b) => a.t - b.t);
+  }
+
+  list = list.map(n => ({ t: n.t, b: n.b, midi: n.midi }));
+  assignPositions(list, rnd, D.radius);
+
+  let g = 0, cnt = 0, prevT = null;
+  for (const n of list) {
+    if (prevT !== null && n.t - prevT > music.beatMs * 2) { g++; cnt = 0; }
+    n.ci = g % COMBO_COLORS.length;
+    n.num = ++cnt;
+    n.judged = false;
+    n.hitTime = null;
+    n.judge = null;
+    n.err = 0;
+    prevT = n.t;
+  }
+  return list;
+}
+
+/* ══════════════════════════════════════════════════════════
+   3. 游戏状态
+   ══════════════════════════════════════════════════════════ */
+const cv = $('cv');
+/* alpha:false 让画布不透明 —— 省掉每帧与页面背景的整屏混合，是最大的一笔渲染开销。
+   desynchronized:true 走低延迟呈现路径（不等合成器垂直同步），明显降低输入到画面的延迟。 */
+const ctx = (function () {
+  try { return cv.getContext('2d', { alpha: false, desynchronized: true }) || cv.getContext('2d'); }
+  catch (e) { return cv.getContext('2d'); }
+})();
+/* 游戏内光标用 DOM 元素画：由指针事件直接驱动、走合成器合成，
+   不需要等游戏的下一帧，因此在任何刷新率下都是跟手的。
+   画布光标至少要等一帧（16.7ms @60Hz、6.9ms @144Hz），高刷屏上肉眼可见。 */
+const curEl = $('cur');
+let curPulseTimer = 0;
+let view = { scale: 1, ox: 0, oy: 0 };
+
+/* localStorage 在部分环境（file:// 受限、隐私模式、企业策略）会直接抛异常，
+   一旦抛在初始化阶段整个脚本都会挂掉，所以必须包一层。 */
+const Store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* ignore */ } }
+};
+
+const settings = {
+  theme: Store.get('rb_theme', 'dark'),
+  offset: (function () { const v = parseInt(Store.get('rb_offset', '0'), 10); return isNaN(v) ? 0 : v; })(),
+  autoplay: Store.get('rb_auto', '0') === '1',
+  nofail: Store.get('rb_nofail', '0') === '1'
+};
+
+let state = 'menu';         // menu | playing | paused | result
+let songIdx = 0, diffIdx = 1;
+let songData = null;        // 当前曲目（含 music / charts 缓存）
+let notes = [];
+let D = DIFFS[1];
+const LEADIN = 1400;        // 开场留白（ms）
+
+/* 游戏时钟由 performance.now() 驱动，不依赖 AudioContext。
+   原因：音频设备异常时 ctx.currentTime 会永久停在 0，若把游戏时钟绑在它上面，
+   整个游戏会静默冻结（圆圈永不出现、血条不掉、无法结算）。
+   音频时钟只用来给声音排期，见 audioTimeFor()。 */
+let st = 0;                 // 当前歌曲时间（ms）
+let lastTick = 0;           // 上一帧的 performance.now()
+let audioAnchorSt = 0;      // 锚点：songTime
+let audioAnchorCtx = 0;     // 锚点：对应的 ctx.currentTime（秒）
+let audioStalled = false;   // 音频时钟停摆检测
+let hp = 100, score = 0, combo = 0, maxCombo = 0;
+let n300 = 0, n100 = 0, n50 = 0, nMiss = 0, judgedCount = 0;
+let errSum = 0, errCount = 0;
+let failed = false;
+let sessionId = 0;          // 对局令牌，防止上一局的延迟回调污染新对局
+let customBuffer = null, customNotes = null, customName = '';
+let importOsu = null;
+let useCustom = false;      // 是否使用导入的谱面开局
+let evIdx = 0;              // 前瞻调度的音频事件游标
+let lastJudge = null;       // 最近一次判定，用于 HUD 显示
+
+const effects = [];         // 打击特效
+const cursor = { x: VW / 2, y: VH / 2, trail: [], pulse: 0 };
+let toastTimer = 0;
+
+/* ---- 自适应画质 ----
+   卡顿（帧时间飙高）在弱显卡 / 高 DPI / 大屏上很常见。与其硬扛，
+   不如让游戏自己降档：先关特效，再降分辨率，恢复流畅后再升回来。 */
+const perf = {
+  level: 2,                 // 2 全特效 / 1 精简 / 0 极简
+  dprCap: 2,
+  minMs: 0,
+  _acc: 0, _n: 0, _bad: 0, _good: 0,
+  showFps: Store.get('rb_fps', '1') === '1'
+};
+const PERF_DPR = [1, 1.5, 2];
+
+/* ---- 画布尺寸 ---- */
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  const base = window.devicePixelRatio || 1;
+  const dpr = Math.max(1, Math.min(base, PERF_DPR[perf.level], perf.dprCap));
+  cv.width = Math.max(1, Math.floor(w * dpr));
+  cv.height = Math.max(1, Math.floor(h * dpr));
+  const scale = Math.min(w / VW, h / VH);
+  view = { scale: scale, ox: (w - VW * scale) / 2, oy: (h - VH * scale) / 2, dpr: dpr, w: w, h: h };
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  buildStaticLayer();
+  buildGlowSprite();
+}
+/* 拖动窗口时 resize 每秒能触发几十次，而每次都要重建两块大画布
+   （主画布 + 静态层），在高分屏上就是实打实的卡顿。这里做去抖，
+   拖动过程中画面略微缩放，松手后再按新尺寸重建。 */
+let resizeTimer = 0;
+function onWindowResize() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(resize, 150);
+}
+window.addEventListener('resize', onWindowResize);
+window.addEventListener('orientationchange', onWindowResize);
+
+/* 画布是 position:fixed;inset:0，左上角恒为 (0,0)，所以不需要 getBoundingClientRect()。
+   这一点很关键：高刷新率鼠标每秒能发上千次 pointermove，
+   每次调用 getBoundingClientRect() 都会强制一次布局，那才是真正的卡顿来源。 */
+function toVirtual(cx, cy) {
+  return { x: (cx - view.ox) / view.scale, y: (cy - view.oy) / view.scale };
+}
+
+/* ---- 静态图层缓存 ----
+   背景渐变、网格、场地辉光每帧都一样，没必要每帧重画。
+   预渲染到离屏画布，每帧一次 drawImage 搞定（省掉整屏渐变填充 + 上百条网格线）。 */
+let staticLayer = null, glowSprite = null;
+
+function buildStaticLayer() {
+  const light = isLight();
+  const w = view.w, h = view.h, dpr = view.dpr;
+  if (!staticLayer) staticLayer = document.createElement('canvas');
+  staticLayer.width = Math.max(1, Math.floor(w * dpr));
+  staticLayer.height = Math.max(1, Math.floor(h * dpr));
+  const g = staticLayer.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const bg = g.createLinearGradient(0, 0, 0, h);
+  if (light) { bg.addColorStop(0, '#eef1f7'); bg.addColorStop(1, '#dfe4ee'); }
+  else { bg.addColorStop(0, '#080a11'); bg.addColorStop(1, '#04050a'); }
+  g.fillStyle = bg;
+  g.fillRect(0, 0, w, h);
+
+  g.save();
+  g.translate(view.ox, view.oy);
+  g.scale(view.scale, view.scale);
+  drawFieldInto(g, light);
+  g.restore();
+}
+
+function buildGlowSprite() {
+  const light = isLight();
+  const S = 512;
+  if (!glowSprite) glowSprite = document.createElement('canvas');
+  glowSprite.width = glowSprite.height = S;
+  const g = glowSprite.getContext('2d');
+  const gr = g.createRadialGradient(S / 2, S / 2, S * 0.04, S / 2, S / 2, S / 2);
+  gr.addColorStop(0, light ? 'rgba(255,77,109,.17)' : 'rgba(255,77,109,.26)');
+  gr.addColorStop(1, 'rgba(255,77,109,0)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, S, S);
+}
+
+/* ---- 时钟 ----
+   游戏时间 st 由主循环按真实经过时间累加，与音频设备是否正常无关。
+   音频排期则通过锚点换算成 ctx.currentTime 时间轴。 */
+function audioTimeFor(songMs) {
+  return audioAnchorCtx + (songMs - audioAnchorSt) / 1000;
+}
+
+/* 检测音频时钟是否停摆（设备被占用 / 无输出设备 / 渲染器崩溃） */
+let _ctxClockLast = -1, _ctxCheckPerf = 0, _ctxStallMs = 0;
+function checkAudioHealth(nowPerf) {
+  const c = Audio2.ctx;
+  if (!c || c.state === 'closed') { audioStalled = true; return; }
+  if (c.state !== 'running') { audioStalled = true; return; }
+  if (c.currentTime === _ctxClockLast) {
+    _ctxStallMs += nowPerf - _ctxCheckPerf;
+  } else {
+    _ctxStallMs = 0;
+  }
+  _ctxClockLast = c.currentTime;
+  _ctxCheckPerf = nowPerf;
+  audioStalled = _ctxStallMs > 900;
+}
+
+/* ---- 音频前瞻调度：每帧只派发未来 0.45s 内的事件 ---- */
+function scheduleEvents() {
+  const c = Audio2.ctx;
+  if (!c || !Audio2.bus || !songData || songData.custom) return;
+  if (audioStalled || c.state !== 'running') return;   // 音频挂了就静音运行，不排队
+  const horizon = c.currentTime + 0.45;
+  const evs = songData.music.events;
+  while (evIdx < evs.length) {
+    const ev = evs[evIdx];
+    const at = audioTimeFor(ev.t + settings.offset);
+    if (at > horizon) break;
+    evIdx++;
+    if (at < c.currentTime - 0.03) continue;           // 已过期的事件直接丢弃，避免补发风暴
+    const t = at;
+    switch (ev.type) {
+      case 'kick':  Audio2.kick(t, ev.vol); break;
+      case 'snare': Audio2.snare(t, ev.vol); break;
+      case 'hat':   Audio2.hat(t, ev.vol, ev.open); break;
+      case 'bass':  Audio2.bass(t, ev.midi, ev.dur / 1000, ev.vol); break;
+      case 'lead':  Audio2.lead(t, ev.midi, ev.dur / 1000, ev.vol); break;
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   4. 开局 / 结束
+   ══════════════════════════════════════════════════════════ */
+function startGame() {
+  // 音频初始化失败也照样能玩（静音模式），不能因为没声音就卡住整个游戏
+  Audio2.init();
+  if (Audio2.ctx) { Audio2.resume(); Audio2.openBus(); }
+
+  const song = songData;
+  D = song.custom ? song.diff : DIFFS[diffIdx];
+
+  if (song.custom) {
+    notes = song.chart.map(n => Object.assign({}, n, { judged: false, hitTime: null, judge: null, err: 0 }));
+    let g = 0, cnt = 0, prevT = null;
+    for (const n of notes) {
+      if (prevT !== null && n.t - prevT > 420) { g++; cnt = 0; }
+      n.ci = g % COMBO_COLORS.length; n.num = ++cnt; prevT = n.t;
+    }
+  } else {
+    notes = buildChart(song.music, diffIdx, song.def);
+  }
+
+  hp = 100; score = 0; combo = 0; maxCombo = 0;
+  n300 = n100 = n50 = nMiss = judgedCount = 0;
+  errSum = 0; errCount = 0; failed = false;
+  lastJudge = null;
+  sessionId++;
+  effects.length = 0;
+  recentHits.length = 0;
+  drawFrom = 0;
+  _scoreShown = -1; _accShown = -1;
+  cursor.trail.length = 0;
+  cursor.x = VW / 2; cursor.y = VH / 2;
+
+  // 游戏时钟起点（与音频无关）
+  st = -LEADIN;
+  lastTick = performance.now();
+
+  // 音频排期锚点：songTime = -LEADIN 时对应 ctx.currentTime
+  evIdx = 0;
+  audioStalled = false;
+  _ctxClockLast = -1; _ctxCheckPerf = performance.now(); _ctxStallMs = 0;
+  if (Audio2.ctx) {
+    audioAnchorSt = -LEADIN;
+    audioAnchorCtx = Audio2.ctx.currentTime + 0.12;
+  }
+
+  if (Audio2.ctx && Audio2.bus) {
+    if (song.custom) {
+      const src = Audio2.ctx.createBufferSource();
+      src.buffer = song.buffer;
+      src.connect(Audio2.bus);
+      src.start(audioTimeFor(0));
+      Audio2.track(src, audioTimeFor(0) + song.buffer.duration);
+    } else {
+      // 音频事件交给前瞻调度器逐帧派发，避免开局一次性创建上千个节点造成卡顿
+      scheduleEvents();
+    }
+  }
+
+  state = 'playing';
+  hideAll();
+  updateThemeUI();
+  syncCursorVisibility();
+}
+
+function stopAudio() {
+  Audio2.closeBus();
+}
+
+function quitToMenu() {
+  stopAudio();
+  Audio2.resume();
+  state = 'menu';
+  showScreen('menuScreen');
+  syncCursorVisibility();
+}
+
+function finishGame() {
+  if (state === 'result') return;
+  stopAudio();
+  state = 'result';
+  syncCursorVisibility();
+  const total = judgedCount || 1;
+  const acc = (300 * n300 + 100 * n100 + 50 * n50) / (300 * total) * 100;
+  const fullCombo = (nMiss === 0 && n50 === 0 && n100 === 0);
+
+  let grade = 'D';
+  if (acc >= 100 && fullCombo) grade = 'SS';
+  else if (acc >= 95) grade = 'S';
+  else if (acc >= 90) grade = 'A';
+  else if (acc >= 80) grade = 'B';
+  else if (acc >= 70) grade = 'C';
+
+  const g = $('grade');
+  g.textContent = failed ? 'F' : grade;
+  g.className = 'grade' + (failed ? ' fail' : '');
+  $('resSong').textContent = (songData.custom ? customName : songData.def.name) +
+    ' · ' + D.name + ' · ★' + (songData.custom ? '?' : D.star.toFixed(1));
+  $('resSub').textContent = failed ? '生命值耗尽 · 挑战失败' : (fullCombo ? '全连！完美通关' : '通关成功');
+  $('rScore').textContent = score.toLocaleString();
+  $('rAcc').textContent = acc.toFixed(2) + '%';
+  $('rCombo').textContent = maxCombo + 'x';
+  $('r300').textContent = n300;
+  $('r100').textContent = n100;
+  $('r50').textContent = n50;
+  $('rMiss').textContent = nMiss;
+  $('rErr').textContent = errCount ? ('平均误差 ' + (errSum / errCount > 0 ? '+' : '') + (errSum / errCount).toFixed(1) + 'ms') : '平均误差 0ms';
+
+  const bar = $('judgeBar');
+  bar.innerHTML = '';
+  const parts = [
+    { n: n300, c: '#4dd2ff' }, { n: n100, c: '#22d3a5' },
+    { n: n50, c: '#ffb84d' }, { n: nMiss, c: '#ff4d6d' }
+  ];
+  for (const p of parts) {
+    const i = document.createElement('i');
+    i.style.width = (p.n / total * 100) + '%';
+    i.style.background = p.c;
+    bar.appendChild(i);
+  }
+  showScreen('resultScreen');
+}
+
+/* ══════════════════════════════════════════════════════════
+   5. 判定
+   ══════════════════════════════════════════════════════════ */
+/* 只保留最近若干次命中用于误差条绘制。
+   之前是每帧遍历全部音符并逐个调用 performance.now()，导入长谱面时开销明显。 */
+const recentHits = [];
+function pushRecent(n) {
+  recentHits.push(n);
+  if (recentHits.length > 40) recentHits.shift();
+}
+
+function applyHit(n, judge, err, tNow) {
+  n.judged = true;
+  n.judge = judge;
+  n.hitTime = tNow;
+  n.err = err;
+  const color = COMBO_COLORS[n.ci];
+
+  if (judge === 300) { n300++; hp += D.gain; }
+  else if (judge === 100) { n100++; hp += D.gain * 0.55; }
+  else { n50++; hp += D.gain * 0.15; }
+  combo++; if (combo > maxCombo) maxCombo = combo;
+  score += Math.round(judge * (1 + Math.min(combo, 200) / 50));
+  judgedCount++;
+  errSum += err; errCount++;
+  lastJudge = { judge: judge, time: tNow };
+
+  pushRecent(n);
+  spawnBurst(n.x, n.y, color, judge === 300 ? 12 : 7);
+  cursor.pulse = 1;
+  cursorPulse();
+}
+
+function applyMiss(n, tNow) {
+  n.judged = true;
+  n.judge = 0;
+  n.hitTime = tNow;
+  nMiss++;
+  judgedCount++;
+  combo = 0;
+  hp += D.miss;
+  lastJudge = { judge: 0, time: tNow };
+  pushRecent(n);
+  spawnBurst(n.x, n.y, '#ff4d6d', 5);
+}
+
+function clickAt(x, y, tNow, stHit) {
+  if (state !== 'playing') return;
+  const t = (stHit === undefined) ? st : stHit;
+  let best = null, bestAbs = 1e9;
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i];
+    if (n.judged) continue;
+    const dt = t - n.t;
+    if (dt < -D.w50) break;        // 后续音符都还没进入判定窗口，停止扫描
+    if (dt > D.w50) continue;      // 这个已过期（下一帧会被判 Miss），跳过而不是中断
+    const dist = Math.hypot(x - n.x, y - n.y);
+    if (dist > D.radius + 16) continue;
+    if (Math.abs(dt) < bestAbs) { bestAbs = Math.abs(dt); best = n; }
+  }
+  if (!best) { spawnClick(x, y, 0.35); return; }
+  const ad = Math.abs(t - best.t);
+  const judge = ad <= D.w300 ? 300 : ad <= D.w100 ? 100 : 50;
+  applyHit(best, judge, t - best.t, tNow);
+  spawnClick(x, y, 1);
+}
+
+/* ══════════════════════════════════════════════════════════
+   6. 特效
+   ══════════════════════════════════════════════════════════ */
+const MAX_EFFECTS = 320;
+function spawnBurst(x, y, color, count) {
+  if (perf.level === 0) return;
+  if (perf.level === 1) count = Math.ceil(count * 0.45);
+  if (effects.length > MAX_EFFECTS) return;
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * TAU, sp = 60 + Math.random() * 200;
+    effects.push({
+      kind: 'p', x: x, y: y, color: color,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: 1, decay: 1.6 + Math.random() * 1.4, r: 1.5 + Math.random() * 2.5
+    });
+  }
+  effects.push({ kind: 'ring', x: x, y: y, color: color, life: 1, decay: 3.4, r0: D.radius * 0.7, r1: D.radius * 2.6 });
+}
+function spawnClick(x, y, power) {
+  if (perf.level === 0 || effects.length > MAX_EFFECTS) return;
+  effects.push({ kind: 'ring', x: x, y: y, color: '#ffffff', life: 0.8 * power + 0.2, decay: 4.2, r0: 4, r1: 34 });
+}
+function updateEffects(dt) {
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const e = effects[i];
+    e.life -= dt * e.decay;
+    if (e.life <= 0) { effects.splice(i, 1); continue; }
+    if (e.kind === 'p') {
+      e.x += e.vx * dt; e.y += e.vy * dt;
+      e.vx *= 0.94; e.vy *= 0.94;
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   7. 更新
+   ══════════════════════════════════════════════════════════ */
+function updateGame(dtSec, tNow) {
+  scheduleEvents();
+
+  // 掉血
+  const firstT = notes.length ? notes[0].t : 0;
+  const lastT = notes.length ? notes[notes.length - 1].t : 0;
+  if (st > firstT - 900 && st < lastT + 400 && !failed) {
+    hp -= D.drain * dtSec;
+  }
+  hp = clamp(hp, 0, 100);
+  if (settings.nofail) hp = Math.max(hp, 5);   // 不死模式下血条见底但不归零
+  if (hp <= 0 && st > firstT && !failed && !settings.nofail) {
+    failed = true;
+    const sid = sessionId;
+    setTimeout(() => { if (sid === sessionId) finishGame(); }, 700);
+    return;
+  }
+
+  // 漏判
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i];
+    if (n.judged) continue;
+    if (st - n.t > D.w50) applyMiss(n, tNow);
+    else if (n.t - st > D.preempt + 200) break;
+  }
+
+  // Autoplay
+  if (settings.autoplay) {
+    let target = null;
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      if (n.judged) continue;
+      if (st >= n.t) { target = n; }
+      else if (n.t - st < D.preempt) { if (!target) target = n; break; }
+    }
+    if (target) {
+      cursor.x = lerp(cursor.x, target.x, Math.min(1, dtSec * 16));
+      cursor.y = lerp(cursor.y, target.y, Math.min(1, dtSec * 16));
+      if (st >= target.t && !target.judged) applyHit(target, 300, 0, tNow);
+    }
+  }
+
+  // 结束
+  const endMs = songData.custom ? (songData.buffer.duration * 1000 + 600) : (songData.music.durationMs + 500);
+  if (st > endMs) {
+    if (!failed) finishGame();
+    return;
+  }
+
+  cursor.trail.push({ x: cursor.x, y: cursor.y });
+  if (cursor.trail.length > 18) cursor.trail.shift();
+  cursor.pulse = Math.max(0, cursor.pulse - dtSec * 5);
+}
+
+/* ══════════════════════════════════════════════════════════
+   8. 渲染
+   ══════════════════════════════════════════════════════════ */
+function isLight() { return document.documentElement.getAttribute('data-theme') === 'light'; }
+
+function render(tNow) {
+  const light = isLight();
+  const W = view.w, H = view.h;
+
+  // 静态层一次 drawImage 代替整屏渐变 + 网格重绘
+  if (staticLayer && staticLayer.width) ctx.drawImage(staticLayer, 0, 0, W, H);
+  else { ctx.fillStyle = light ? '#eef1f7' : '#05060b'; ctx.fillRect(0, 0, W, H); }
+
+  ctx.save();
+  ctx.translate(view.ox, view.oy);
+  ctx.scale(view.scale, view.scale);
+
+  if (state === 'playing' || state === 'paused') {
+    if (perf.level > 0) drawBeatPulse();
+    if (bgImage) drawBgImage();
+    drawNotes(light, tNow);
+    drawEffects();
+    if (settings.autoplay && state === 'playing') drawCanvasCursor(light);
+    drawHUD(light, tNow);
+    if (st < 0) drawLeadIn(light);
+  }
+  ctx.restore();
+}
+
+/* 节拍辉光：预渲染好的贴图 + 缩放，比每帧建径向渐变便宜得多 */
+function drawBeatPulse() {
+  if (!glowSprite || state !== 'playing' || !songData) return;
+  const beat = !songData.custom ? songData.music.beatMs : 500;
+  const phase = (((st % beat) + beat) % beat) / beat;
+  const p = Math.pow(1 - phase, 3);
+  if (p < 0.03) return;
+  const R = 300 + p * 55;
+  ctx.globalAlpha = p * 0.85;
+  ctx.drawImage(glowSprite, VW / 2 - R, VH / 2 - R, R * 2, R * 2);
+  ctx.globalAlpha = 1;
+}
+
+/* 导入谱面的背景图（.osz 里带的），只在玩导入谱面时显示 */
+function drawBgImage() {
+  if (!bgImage || !bgImage.width || !songData || !songData.custom) return;
+  const s = Math.max(VW / bgImage.width, VH / bgImage.height);
+  const w = bgImage.width * s, h = bgImage.height * s;
+  ctx.globalAlpha = 0.20;
+  ctx.drawImage(bgImage, (VW - w) / 2, (VH - h) / 2, w, h);
+  ctx.globalAlpha = 1;
+}
+
+/* 开场倒计时：让玩家知道游戏已经在跑，而不是卡住了 */
+function drawLeadIn(light) {
+  const txt = light ? '#151a26' : '#eaeef8';
+  const sub = light ? 'rgba(21,26,38,.55)' : 'rgba(234,238,248,.55)';
+  const left = -st;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const n = Math.ceil(left / 1000);
+  const frac = 1 - ((left % 1000) / 1000);
+  const pop = 1 + (1 - frac) * 0.35;
+
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = txt;
+  ctx.font = '900 ' + Math.round(64 * pop) + 'px Inter, "PingFang SC", sans-serif';
+  ctx.fillText(n > 0 ? String(n) : 'GO', VW / 2, VH * 0.42);
+
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = sub;
+  ctx.font = '700 14px Inter, "PingFang SC", sans-serif';
+  ctx.fillText('准备', VW / 2, VH * 0.42 - 52);
+
+  // 顶部进度条
+  const w = 200, x = (VW - w) / 2, y = VH * 0.42 + 44;
+  ctx.fillStyle = light ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.14)';
+  roundRect(x, y, w, 5, 3); ctx.fill();
+  ctx.fillStyle = '#ff4d6d';
+  roundRect(x, y, Math.max(3, w * clamp(frac, 0, 1)), 5, 3); ctx.fill();
+
+  ctx.textBaseline = 'alphabetic';
+}
+
+/* 场地（网格 / 边框 / 底辉光）—— 全部是静态内容，只在尺寸或主题变化时重画一次 */
+function drawFieldInto(g, light) {
+  const cx = VW / 2, cy = VH / 2;
+  const gr = g.createRadialGradient(cx, cy, 20, cx, cy, 330);
+  if (light) {
+    gr.addColorStop(0, 'rgba(255,77,109,.055)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+  } else {
+    gr.addColorStop(0, 'rgba(255,77,109,.10)');
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+  }
+  g.fillStyle = gr;
+  g.fillRect(0, 0, VW, VH);
+
+  g.strokeStyle = light ? 'rgba(0,0,0,.045)' : 'rgba(255,255,255,.045)';
+  g.lineWidth = 1;
+  g.beginPath();
+  for (let x = 64; x < VW; x += 64) { g.moveTo(x, 0); g.lineTo(x, VH); }
+  for (let y = 64; y < VH; y += 64) { g.moveTo(0, y); g.lineTo(VW, y); }
+  g.stroke();
+
+  g.strokeStyle = light ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.07)';
+  g.lineWidth = 2;
+  g.strokeRect(1, 1, VW - 2, VH - 2);
+}
+
+/* 只遍历"当前可见窗口"内的音符。
+   st 单调递增，所以已经淡出完的音符用 drawFrom 永久跳过；
+   未来还没进入缩圈时间的音符直接 break —— 以前是从数组末尾倒着扫全部音符，
+   导入上千音符的真实谱面时每帧都在做无用功。 */
+let drawFrom = 0;
+function drawNotes(light, tNow) {
+  const R = D.radius;
+  const numFont = '700 ' + Math.round(R * 0.86) + 'px Inter, "PingFang SC", sans-serif';
+  const simple = perf.level === 0;
+  const fadeAhead = D.w50 + 400;
+
+  while (drawFrom < notes.length && st - notes[drawFrom].t > fadeAhead) drawFrom++;
+
+  for (let i = drawFrom; i < notes.length; i++) {
+    const n = notes[i];
+    const dt = st - n.t;
+    if (dt < -(D.preempt + 40)) break;    // 之后的音符更晚出现，停止扫描
+
+    const k = 1 + dt / D.preempt;         // 0 → 出现，1 → 到点
+    const color = COMBO_COLORS[n.ci];
+    let alpha = 1, scale = 1;
+
+    if (n.judged && n.hitTime !== null) {
+      const e = (tNow - n.hitTime) / 240;
+      if (e >= 1) continue;
+      alpha = 1 - e;
+      scale = 1 + e * 0.35;
+    }
+
+    ctx.globalAlpha = alpha;
+
+    if (!n.judged && !simple) {
+      // 缩圈
+      const fadeIn = clamp(k / 0.14, 0, 1);
+      const ar = R * lerp(3.0, 1.0, clamp(k, 0, 1));
+      ctx.globalAlpha = alpha * fadeIn * 0.85;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(n.x, n.y, ar, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = alpha;
+    }
+
+    // 圆本体
+    const r = R * scale;
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, TAU);
+    ctx.fillStyle = n.judge === 0 ? (light ? 'rgba(120,128,150,.35)' : 'rgba(90,96,120,.45)') : hexA(color, 0.30);
+    ctx.fill();
+
+    ctx.lineWidth = 3.4;
+    ctx.strokeStyle = n.judge === 0 ? (light ? 'rgba(120,128,150,.7)' : 'rgba(150,156,180,.7)') : '#ffffff';
+    ctx.stroke();
+
+    if (!simple) {
+      ctx.beginPath(); ctx.arc(n.x, n.y, r - 4.5, 0, TAU);
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = hexA(color, n.judge === 0 ? 0.3 : 0.85);
+      ctx.stroke();
+    }
+
+    // 序号
+    if (!n.judged) {
+      ctx.fillStyle = light ? 'rgba(20,24,36,.92)' : 'rgba(255,255,255,.95)';
+      ctx.font = numFont;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(n.num), n.x, n.y + 1);
+    }
+
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawEffects() {
+  if (perf.level === 0) return;
+  for (let i = 0; i < effects.length; i++) {
+    const e = effects[i];
+    if (e.kind === 'ring') {
+      const t = 1 - e.life;
+      ctx.globalAlpha = Math.max(0, e.life) * 0.8;
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = lerp(4, 1, t);
+      ctx.beginPath(); ctx.arc(e.x, e.y, lerp(e.r0, e.r1, t), 0, TAU); ctx.stroke();
+    } else {
+      ctx.globalAlpha = Math.max(0, e.life);
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * e.life, 0, TAU); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* 画布光标只给 Autoplay 用；玩家自己操作时用 DOM 光标（零延迟） */
+function drawCanvasCursor(light) {
+  if (perf.level > 0) {
+    for (let i = 0; i < cursor.trail.length; i++) {
+      const p = cursor.trail[i];
+      ctx.globalAlpha = (i / cursor.trail.length) * 0.22;
+      ctx.fillStyle = light ? '#2b3245' : '#ffffff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3 + i * 0.55, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  const R = 9 + cursor.pulse * 5;
+  ctx.beginPath(); ctx.arc(cursor.x, cursor.y, R, 0, TAU);
+  ctx.fillStyle = light ? 'rgba(20,24,36,.14)' : 'rgba(255,255,255,.18)';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = light ? '#2b3245' : '#ffffff';
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(cursor.x, cursor.y, 2.4, 0, TAU);
+  ctx.fillStyle = light ? '#2b3245' : '#ffffff';
+  ctx.fill();
+}
+
+/* DOM 光标：位置由指针事件直接写入，动画交给合成器 */
+let _curPx = -999, _curPy = -999;
+let _lastPx = -1, _lastPy = -1;      // 最近一次鼠标位置，用于开局时立刻摆好光标
+function placeCursor(clientX, clientY) {
+  if (state !== 'playing' || settings.autoplay) return;
+  curEl.classList.add('on');
+  if (Math.abs(clientX - _curPx) < 0.5 && Math.abs(clientY - _curPy) < 0.5) return;
+  _curPx = clientX; _curPy = clientY;
+  curEl.style.transform = 'translate3d(' + clientX + 'px,' + clientY + 'px,0)';
+}
+function syncCursorVisibility() {
+  const on = state === 'playing' && !settings.autoplay;
+  curEl.classList.toggle('on', on);
+  if (on) {
+    // 开局时鼠标可能还没动过，先用上次的位置把光标摆出来，否则玩家会以为光标消失了
+    if (_lastPx >= 0) {
+      _curPx = -999;
+      placeCursor(_lastPx, _lastPy);
+    }
+  } else {
+    _curPx = -999; _curPy = -999;
+  }
+}
+function cursorPulse() {
+  if (perf.level === 0) return;
+  curEl.classList.add('hit');
+  clearTimeout(curPulseTimer);
+  curPulseTimer = setTimeout(() => curEl.classList.remove('hit'), 110);
+}
+
+/* 分数/准确率的格式化结果只在数值变化时才重算：
+   toLocaleString() 每帧调用一次看起来无害，但它是这类渲染里最典型的隐性开销。 */
+let _scoreShown = -1, _scoreStr = '0', _accShown = -1, _accStr = '100.00%';
+function drawHUD(light, tNow) {
+  const txt = light ? '#151a26' : '#eaeef8';
+  const sub = light ? 'rgba(21,26,38,.58)' : 'rgba(234,238,248,.58)';
+  const TOP = SAFE.top, BOT = SAFE.bottom;
+
+  // 上下压暗：HUD 文字即使压在音符上也读得清
+  const sc = ctx.createLinearGradient(0, 0, 0, TOP);
+  sc.addColorStop(0, light ? 'rgba(238,241,247,.90)' : 'rgba(4,5,10,.82)');
+  sc.addColorStop(1, light ? 'rgba(238,241,247,0)' : 'rgba(4,5,10,0)');
+  ctx.fillStyle = sc; ctx.fillRect(0, 0, VW, TOP);
+
+  const sc2 = ctx.createLinearGradient(0, VH - BOT, 0, VH);
+  sc2.addColorStop(0, light ? 'rgba(238,241,247,0)' : 'rgba(4,5,10,0)');
+  sc2.addColorStop(1, light ? 'rgba(238,241,247,.90)' : 'rgba(4,5,10,.82)');
+  ctx.fillStyle = sc2; ctx.fillRect(0, VH - BOT, VW, BOT);
+
+  // 血条
+  const hpW = 168, hpH = 7, hpx = 16, hpy = 12;
+  ctx.fillStyle = light ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.13)';
+  roundRect(hpx, hpy, hpW, hpH, 3.5); ctx.fill();
+  const ratio = hp / 100;
+  ctx.fillStyle = ratio > 0.55 ? '#22d3a5' : ratio > 0.25 ? '#ffb84d' : '#ff4d6d';
+  roundRect(hpx, hpy, Math.max(2, hpW * ratio), hpH, 3.5); ctx.fill();
+
+  // 分数 / 准确率
+  if (score !== _scoreShown) { _scoreShown = score; _scoreStr = score.toLocaleString(); }
+  if (judgedCount !== _accShown) {
+    _accShown = judgedCount;
+    _accStr = (judgedCount ? ((300 * n300 + 100 * n100 + 50 * n50) / (300 * judgedCount) * 100) : 100).toFixed(2) + '%';
+  }
+  ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = txt;
+  ctx.font = '800 22px Inter, "PingFang SC", sans-serif';
+  ctx.fillText(_scoreStr, VW - 16, 30);
+  ctx.fillStyle = sub;
+  ctx.font = '600 11px Inter, "PingFang SC", sans-serif';
+  ctx.fillText(_accStr + '  ·  ★' + (songData.custom ? '?' : D.star.toFixed(1)), VW - 16, 46);
+
+  // 连击
+  if (combo > 1) {
+    ctx.textAlign = 'left';
+    if (perf.level > 0) {
+      ctx.shadowColor = light ? 'rgba(238,241,247,.95)' : 'rgba(4,5,10,.9)';
+      ctx.shadowBlur = 10;
+    }
+    ctx.fillStyle = txt;
+    ctx.font = '900 38px Inter, "PingFang SC", sans-serif';
+    ctx.fillText(String(combo), 18, VH * 0.64);
+    ctx.font = '800 14px Inter, sans-serif';
+    ctx.fillStyle = sub;
+    ctx.fillText('x', 18 + ctx.measureText(String(combo)).width + 20, VH * 0.64);
+    ctx.shadowBlur = 0;
+  }
+
+  // 最近判定文字
+  if (lastJudge) {
+    const e = (tNow - lastJudge.time) / 620;
+    if (e < 1) {
+      const info = lastJudge.judge === 300 ? ['300', '#4dd2ff'] : lastJudge.judge === 100 ? ['100', '#22d3a5'] :
+                   lastJudge.judge === 50 ? ['50', '#ffb84d'] : ['MISS', '#ff4d6d'];
+      ctx.globalAlpha = 1 - e * e;
+      ctx.textAlign = 'center';
+      if (perf.level > 0) {
+        ctx.shadowColor = light ? 'rgba(238,241,247,.95)' : 'rgba(4,5,10,.92)';
+        ctx.shadowBlur = 12;
+      }
+      ctx.fillStyle = info[1];
+      ctx.font = '900 28px Inter, "PingFang SC", sans-serif';
+      ctx.fillText(info[0], VW / 2, VH * 0.40 - e * 12);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 判定误差条
+  const bw = 210, bh = 5, bx = (VW - bw) / 2, by = VH - 26;
+  ctx.fillStyle = light ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.12)';
+  roundRect(bx, by, bw, bh, 2.5); ctx.fill();
+  ctx.strokeStyle = sub; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(bx + bw / 2, by - 3); ctx.lineTo(bx + bw / 2, by + bh + 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + bw * 0.34, by); ctx.lineTo(bx + bw * 0.34, by + bh); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + bw * 0.66, by); ctx.lineTo(bx + bw * 0.66, by + bh); ctx.stroke();
+  for (let i = 0; i < recentHits.length; i++) {
+    const n = recentHits[i];
+    if (n.judge === 0) continue;
+    const age = (tNow - n.hitTime) / 2200;
+    if (age > 1) continue;
+    const px = bx + bw / 2 + clamp(n.err / D.w50, -1, 1) * (bw / 2) * 0.95;
+    ctx.globalAlpha = 1 - age;
+    ctx.fillStyle = n.judge === 300 ? '#4dd2ff' : n.judge === 100 ? '#22d3a5' : '#ffb84d';
+    ctx.fillRect(px - 1.2, by - 2, 2.4, bh + 4);
+    ctx.globalAlpha = 1;
+  }
+
+  // 曲目信息 + 帧率（帧率是排查卡顿最直接的依据）
+  ctx.textAlign = 'left'; ctx.fillStyle = sub;
+  ctx.font = '600 10px Inter, "PingFang SC", sans-serif';
+  const title = (songData.custom ? customName : songData.def.name) + '  ·  ' + (songData.custom ? (D.name || 'Imported') : D.name);
+  ctx.fillText(title, 16, VH - 10);
+  ctx.textAlign = 'right';
+  const tag = (settings.autoplay ? 'AUTOPLAY' : (settings.nofail ? 'NO FAIL' : 'PLAY')) +
+    (perf.showFps ? '  ·  ' + Math.round(fpsAvg) + 'fps' + (perf.level < 2 ? ' (画质' + (perf.level === 1 ? '中' : '低') + ')' : '') : '');
+  ctx.fillText(tag, VW - 16, VH - 10);
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ══════════════════════════════════════════════════════════
+   9. 主循环
+   ══════════════════════════════════════════════════════════ */
+let lastFrame = performance.now();
+let lastPrune = 0;
+let fpsAvg = 60, frameMs = 16;   // 帧率统计（HUD 与调试用）
+
+/* 自适应画质：采样窗口帧时间偏高就降档，长时间宽裕再升回去。
+   降档要快（约 0.8 秒就响应，弱机上不用先卡两秒），升档要慢（带迟滞，
+   避免在临界点反复抖动）。单次偶发卡顿（GC、加载）摊到 45 帧里影响很小，不会误触发。 */
+function autoQuality(rawDt) {
+  if (rawDt > 200) return;                 // 切标签页回来的异常帧不计入
+  perf._acc += rawDt; perf._n++;
+  if (perf._n < 45) return;
+  const avg = perf._acc / perf._n;
+  perf._acc = 0; perf._n = 0;
+  if (avg > 26) {
+    perf._bad++; perf._good = 0;
+    if (perf._bad >= 1 && perf.level > 0) setPerfLevel(perf.level - 1);
+  } else if (avg < 12.5) {
+    perf._good++; perf._bad = 0;
+    if (perf._good >= 5 && perf.level < 2) setPerfLevel(perf.level + 1);
+  } else { perf._bad = 0; perf._good = 0; }
+}
+
+function setPerfLevel(lv) {
+  if (lv === perf.level) return;
+  const drop = lv < perf.level;
+  perf.level = lv;
+  perf._bad = 0; perf._good = 0;
+  resize();                                 // 只有档位变化涉及分辨率时才重建画布
+  // 只在降档时提示：升档静默，免得在游戏里反复弹提示
+  if (drop) toast(lv === 1 ? '检测到卡顿，画质自动降为中' : '检测到卡顿，画质自动降为低');
+}
+
+function frame() {
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  const rawDt = now - lastFrame;
+  const dtSec = Math.min(0.05, rawDt / 1000);
+  lastFrame = now;
+  frameMs += (rawDt - frameMs) * 0.08;
+  if (rawDt > 0) fpsAvg += (1000 / rawDt - fpsAvg) * 0.08;
+  autoQuality(rawDt);
+
+  if (state === 'playing') {
+    // 游戏时间由真实经过时间累加，单帧上限 100ms，避免切标签页回来时瞬移
+    st += Math.min(100, now - lastTick);
+    lastTick = now;
+    checkAudioHealth(now);
+    if (now - lastPrune > 1000) { lastPrune = now; Audio2.pruneSources(); }
+    updateGame(dtSec, now);
+  }
+  updateEffects(dtSec);
+  render(now);
+}
+
+/* ══════════════════════════════════════════════════════════
+   10. 输入
+   ══════════════════════════════════════════════════════════ */
+
+/* 用事件自身的时间戳把歌曲时间插值到亚帧精度。
+   只用每帧刷新的 st 判定，等于把玩家的操作强行量化到 16.7ms 的格子里，
+   在 300 判定窗口只有 50ms 的 Expert 难度下手感差异很明显。 */
+function stAt(perfTime) {
+  if (state !== 'playing') return st;
+  const d = perfTime - lastTick;
+  if (!isFinite(d)) return st;
+  return st + clamp(d, -25, 45);
+}
+
+function pointerMove(cx, cy) {
+  if (settings.autoplay && state === 'playing') return;
+  const v = toVirtual(cx, cy);
+  cursor.x = clamp(v.x, 0, VW);
+  cursor.y = clamp(v.y, 0, VH);
+}
+
+function doHit(cx, cy, perfTime) {
+  Audio2.init(); Audio2.resume();
+  pointerMove(cx, cy);
+  clickAt(cursor.x, cursor.y, perfTime, stAt(perfTime));
+}
+
+cv.addEventListener('pointermove', e => {
+  const list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+  const last = list && list.length ? list[list.length - 1] : e;
+  _lastPx = last.clientX; _lastPy = last.clientY;
+  pointerMove(last.clientX, last.clientY);
+  placeCursor(last.clientX, last.clientY);
+}, { passive: true });
+
+cv.addEventListener('pointerdown', e => {
+  if (e.button !== 0 && e.pointerType === 'mouse') return;
+  e.preventDefault();
+  _lastPx = e.clientX; _lastPy = e.clientY;
+  placeCursor(e.clientX, e.clientY);
+  cursorPulse();                                  // 点击即刻反馈，没打中也有
+  doHit(e.clientX, e.clientY, e.timeStamp);
+}, { passive: false });
+
+cv.addEventListener('pointerleave', () => { curEl.classList.remove('on'); _curPx = -999; });
+cv.addEventListener('pointerenter', () => { if (state === 'playing' && !settings.autoplay) curEl.classList.add('on'); });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+// 触屏上避免长按选中 / 双击缩放
+cv.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+
+window.addEventListener('keydown', e => {
+  Audio2.init(); Audio2.resume();
+  const k = e.key.toLowerCase();
+
+  if (k === 'z' || k === 'x' || k === ' ') {
+    if (state === 'playing') {
+      e.preventDefault();
+      // 键盘击打没有指针坐标，用当前光标位置 + 事件时间戳
+      clickAt(cursor.x, cursor.y, e.timeStamp, stAt(e.timeStamp));
+    }
+  }
+  if (k === 'escape') {
+    if (state === 'playing') pauseGame();
+    else if (state === 'paused') resumeGame();
+  }
+  if (k === 'r') {
+    if (state === 'playing' || state === 'paused' || state === 'result') startGame();
+  }
+  if (k === ' ' && state === 'paused') { e.preventDefault(); resumeGame(); }
+});
+
+/* ══════════════════════════════════════════════════════════
+   11. UI
+   ══════════════════════════════════════════════════════════ */
+function hideAll() {
+  $('menuScreen').classList.add('hidden');
+  $('pauseScreen').classList.add('hidden');
+  $('resultScreen').classList.add('hidden');
+}
+function showScreen(id) {
+  hideAll();
+  if (id) $(id).classList.remove('hidden');
+}
+function pauseGame() {
+  if (state !== 'playing') return;
+  state = 'paused';
+  if (Audio2.ctx) Audio2.ctx.suspend();
+  showScreen('pauseScreen');
+  syncCursorVisibility();
+}
+function resumeGame() {
+  if (state !== 'paused') return;
+  state = 'playing';
+  lastTick = performance.now();
+  if (Audio2.ctx) {
+    Audio2.ctx.resume();
+    // 重新锚定音频排期：若暂停期间音频时钟仍在走（suspend 未生效），这里可修正漂移
+    audioAnchorCtx = Audio2.ctx.currentTime;
+    audioAnchorSt = st;
+    audioStalled = false;
+    _ctxClockLast = -1; _ctxCheckPerf = performance.now(); _ctxStallMs = 0;
+  }
+  showScreen(null);
+  syncCursorVisibility();
+}
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 2200);
+}
+
+function renderSongList() {
+  const box = $('songList');
+  box.innerHTML = '';
+  SONGS.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = 'song' + (i === songIdx ? ' on' : '');
+    b.style.color = s.color;
+    let spark = '<div class="spark">';
+    const rnd = mulberry32(s.seed);
+    for (let k = 0; k < 14; k++) spark += '<i style="height:' + (6 + Math.floor(rnd() * 30)) + 'px"></i>';
+    spark += '</div>';
+    b.innerHTML = '<b><span class="dot" style="background:' + s.color + '"></span>' + s.name + '</b>' +
+                  '<small>' + s.artist + ' · ' + s.bars * 4 + ' 拍</small>' + spark;
+    b.onclick = () => {
+      songIdx = i;
+      useCustom = false;
+      renderSongList(); renderDiffList(); refreshImport();
+      Audio2.ui(660, 0.06);
+    };
+    box.appendChild(b);
+  });
+}
+
+function renderDiffList() {
+  const box = $('diffList');
+  box.innerHTML = '';
+  DIFFS.forEach((d, i) => {
+    const b = document.createElement('button');
+    b.className = 'diff' + (i === diffIdx ? ' on' : '');
+    b.innerHTML = d.name + '<em>★' + d.star.toFixed(1) + '</em>';
+    b.onclick = () => { diffIdx = i; useCustom = false; renderDiffList(); refreshImport(); Audio2.ui(880, 0.06); };
+    box.appendChild(b);
+  });
+}
+
+function updateThemeUI() {
+  document.documentElement.setAttribute('data-theme', settings.theme);
+  $('autoBtn').textContent = 'Autoplay：' + (settings.autoplay ? '开' : '关');
+  $('nfBtn').textContent = '不死模式：' + (settings.nofail ? '开' : '关');
+  $('fpsBtn').textContent = '帧率显示：' + (perf.showFps ? '开' : '关');
+  $('offsetRange').value = settings.offset;
+  $('offsetVal').textContent = settings.offset + ' ms';
+  // 主题换了要重画静态层（背景色与网格颜色都变了）
+  buildStaticLayer();
+  buildGlowSprite();
+}
+
+/* ---- 按钮绑定 ---- */
+/* 内置曲的音频事件表生成一次就够，之后复用（以前每次开局都重新生成整首曲子） */
+const musicCache = {};
+$('playBtn').onclick = () => {
+  Audio2.init(); Audio2.resume(); Audio2.ui(520, 0.09);
+  if (useCustom && importOsu && customBuffer) {
+    songData = { custom: true, buffer: customBuffer, chart: importOsu.chart, diff: importOsu.diff };
+  } else {
+    const def = SONGS[songIdx];
+    if (!musicCache[def.id]) musicCache[def.id] = buildMusic(def);
+    songData = { def: def, music: musicCache[def.id], custom: false };
+  }
+  startGame();
+};
+$('useCustomBtn').onclick = () => {
+  useCustom = !useCustom;
+  refreshImport();
+  Audio2.ui(useCustom ? 760 : 480, 0.07);
+};
+$('autoBtn').onclick = () => {
+  settings.autoplay = !settings.autoplay;
+  Store.set('rb_auto', settings.autoplay ? '1' : '0');
+  updateThemeUI();
+};
+$('nfBtn').onclick = () => {
+  settings.nofail = !settings.nofail;
+  Store.set('rb_nofail', settings.nofail ? '1' : '0');
+  updateThemeUI();
+  Audio2.ui(settings.nofail ? 700 : 420, 0.07);
+};
+$('themeBtn').onclick = () => {
+  settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
+  Store.set('rb_theme', settings.theme);
+  updateThemeUI();
+};
+$('fpsBtn').onclick = () => {
+  perf.showFps = !perf.showFps;
+  Store.set('rb_fps', perf.showFps ? '1' : '0');
+  updateThemeUI();
+  Audio2.ui(perf.showFps ? 700 : 460, 0.06);
+};
+$('resumeBtn').onclick = resumeGame;
+$('restartBtn').onclick = () => startGame();
+$('quitBtn').onclick = quitToMenu;
+$('againBtn').onclick = () => startGame();
+$('backBtn').onclick = quitToMenu;
+
+$('offsetRange').addEventListener('input', e => {
+  settings.offset = parseInt(e.target.value, 10);
+  Store.set('rb_offset', settings.offset);
+  $('offsetVal').textContent = settings.offset + ' ms';
+});
+
+/* ---- 导入谱面：.osz 谱面包 / 单个 .osu / 音频 ---- */
+
+/* .osz 本质就是一个 zip。这里手写一个最小 ZIP 读取器：
+   读中央目录拿到条目列表，再按需解压单个条目。
+   压缩方式 8（deflate）直接用浏览器内置的 DecompressionStream('deflate-raw')，
+   所以不需要引入 JSZip 之类的第三方库，单文件依然是单文件。 */
+function zipEntries(buf) {
+  const dv = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  const dec = new TextDecoder('utf-8');
+
+  // 从尾部往前找 EOCD（结尾中央目录记录），注释最长 65535 字节
+  let eocd = -1;
+  const stop = Math.max(0, buf.byteLength - 66000);
+  for (let i = buf.byteLength - 22; i >= stop; i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('不是有效的 .osz / .zip 文件');
+
+  const count = dv.getUint16(eocd + 10, true);
+  const cdOff = dv.getUint32(eocd + 16, true);
+  if (cdOff === 0xffffffff || count === 0xffff) throw new Error('暂不支持 ZIP64 格式的谱面包');
+
+  const out = [];
+  let off = cdOff;
+  for (let i = 0; i < count; i++) {
+    if (off + 46 > buf.byteLength || dv.getUint32(off, true) !== 0x02014b50) break;
+    const method = dv.getUint16(off + 10, true);
+    const compSize = dv.getUint32(off + 20, true);
+    const size = dv.getUint32(off + 24, true);
+    const nameLen = dv.getUint16(off + 28, true);
+    const extraLen = dv.getUint16(off + 30, true);
+    const cmtLen = dv.getUint16(off + 32, true);
+    const localOff = dv.getUint32(off + 42, true);
+
+    let name = dec.decode(u8.subarray(off + 46, off + 46 + nameLen));
+    // 中文谱面常见 GBK 文件名，UTF-8 解不出来时退回 GBK，避免整个包报废
+    if (name.indexOf('\uFFFD') >= 0) {
+      try { name = new TextDecoder('gbk').decode(u8.subarray(off + 46, off + 46 + nameLen)); } catch (e) { /* 保持原样 */ }
+    }
+
+    if (localOff + 30 <= buf.byteLength && dv.getUint32(localOff, true) === 0x04034b50) {
+      const dataOff = localOff + 30 + dv.getUint16(localOff + 26, true) + dv.getUint16(localOff + 28, true);
+      out.push({ name: name, method: method, compSize: compSize, size: size, dataOff: dataOff });
+    }
+    off += 46 + nameLen + extraLen + cmtLen;
+  }
+  if (!out.length) throw new Error('谱面包里没有读到任何文件');
+  return out;
+}
+
+async function zipRead(buf, ent) {
+  const raw = new Uint8Array(buf, ent.dataOff, ent.compSize);
+  if (ent.method === 0) return raw;
+  if (ent.method !== 8) throw new Error('不支持的压缩方式（' + ent.method + '）');
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('当前浏览器不支持解压 .osz（需要 Chrome / Edge 103 以上）');
+  }
+  // 解压炸弹防护：按声明体积提前拒绝，避免一个畸形压缩包把内存打爆
+  if (ent.size > MAX_ENTRY_BYTES) throw new Error('条目过大（' + Math.round(ent.size / 1048576) + 'MB），已跳过');
+  const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+const MAX_ENTRY_BYTES = 128 * 1024 * 1024;   // 单个条目上限 128MB
+const MAX_OSU_FILES = 60;                    // 一个谱面包里最多解析这么多个难度
+
+const baseName = p => p.replace(/^.*[\\/]/, '');
+const extOf = p => ((p.match(/\.([a-z0-9]+)$/i) || ['', ''])[1] || '').toLowerCase();
+
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error('图片解码失败'));
+    img.src = url;
+  });
+}
+
+let oszCharts = [];     // 解析出的全部难度（.osz 里可能有很多个）
+let oszIndex = 0;       // 当前选中的难度
+let importSource = '';  // 'osz' | 'osu'，用来决定哪个入口显示"已载入"
+let bgImage = null;     // 谱面自带的背景图（可选）
+
+async function loadOsz(file) {
+  const buf = await file.arrayBuffer();
+  const ents = zipEntries(buf);
+
+  const osuEnts = ents.filter(e => /\.osu$/i.test(e.name)).slice(0, MAX_OSU_FILES);
+  if (!osuEnts.length) throw new Error('谱面包里没有 .osu 谱面文件');
+
+  // 逐个难度解析，单个失败不影响其它
+  const charts = [];
+  for (const e of osuEnts) {
+    try {
+      const text = new TextDecoder('utf-8').decode(await zipRead(buf, e));
+      const c = parseOsu(text);
+      c.file = baseName(e.name);
+      charts.push(c);
+    } catch (err) { /* 跳过不支持的难度 */ }
+  }
+  if (!charts.length) throw new Error('谱面全部解析失败（可能不是 osu!standard 模式）');
+  charts.sort((a, b) => b.chart.length - a.chart.length);
+
+  // 音频：优先用谱面 [General] 里写的 AudioFilename，找不到就退而求其次拿任意音频
+  const wants = charts.map(c => (c.audioFile || '').toLowerCase()).filter(Boolean);
+  const audioEnt =
+    ents.find(e => wants.indexOf(baseName(e.name).toLowerCase()) >= 0) ||
+    ents.find(e => ['mp3', 'ogg', 'wav', 'm4a', 'flac'].indexOf(extOf(e.name)) >= 0);
+  if (!audioEnt) throw new Error('谱面包里没有找到音频文件');
+
+  // 背景图：可选，失败也不影响游玩
+  bgImage = null;
+  const bgWant = (charts[0].bgFile || '').toLowerCase();
+  if (bgWant) {
+    const bgEnt = ents.find(e => baseName(e.name).toLowerCase() === bgWant);
+    if (bgEnt && ['jpg', 'jpeg', 'png', 'gif', 'webp'].indexOf(extOf(bgEnt.name)) >= 0) {
+      try {
+        const bytes = await zipRead(buf, bgEnt);
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'image/' + extOf(bgEnt.name) }));
+        bgImage = await loadImage(url);
+        URL.revokeObjectURL(url);
+      } catch (e) { bgImage = null; }
+    }
+  }
+
+  Audio2.init();
+  if (!Audio2.ctx) throw new Error('当前环境不支持音频解码');
+
+  // 注意：decodeAudioData 会 detach 传入的 ArrayBuffer，
+  // 而 method 0 的条目是原缓冲上的视图 —— 必须复制一份，否则后面再读别的文件会炸。
+  const audioBytes = await zipRead(buf, audioEnt);
+  customBuffer = await Audio2.ctx.decodeAudioData(audioBytes.slice().buffer);
+
+  oszCharts = charts;
+  oszIndex = 0;
+  importSource = 'osz';
+  applyOszDiff(0);
+  useCustom = true;
+  renderOszList();
+}
+
+function applyOszDiff(i) {
+  oszIndex = i;
+  const c = oszCharts[i];
+  if (!c) return;
+  importOsu = c;
+  customName = (c.artist ? c.artist + ' — ' : '') + (c.title || c.file);
+}
+
+function renderOszList() {
+  const box = $('oszList');
+  box.innerHTML = '';
+  oszCharts.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.className = i === oszIndex ? 'on' : '';
+    b.textContent = (c.version || ('难度 ' + (i + 1))) + ' · ' + c.chart.length;
+    b.onclick = () => {
+      applyOszDiff(i);
+      renderOszList();
+      refreshImport();
+      Audio2.ui(780, 0.06);
+    };
+    box.appendChild(b);
+  });
+  $('oszRow').style.display = oszCharts.length > 1 ? 'flex' : 'none';
+}
+
+const oszInput = document.createElement('input');
+oszInput.type = 'file'; oszInput.accept = '.osz,.zip'; oszInput.style.display = 'none';
+const osuInput = document.createElement('input');
+osuInput.type = 'file'; osuInput.accept = '.osu'; osuInput.style.display = 'none';
+const audioInput = document.createElement('input');
+audioInput.type = 'file'; audioInput.accept = 'audio/*'; audioInput.style.display = 'none';
+oszInput.id = 'oszInput'; osuInput.id = 'osuInput'; audioInput.id = 'audioInput';
+document.body.appendChild(oszInput);
+document.body.appendChild(osuInput);
+document.body.appendChild(audioInput);
+
+$('pickOsz').onclick = () => oszInput.click();
+$('pickOsu').onclick = () => osuInput.click();
+$('pickAudio').onclick = () => audioInput.click();
+
+function showLoading(text) {
+  const el = $('loading');
+  el.textContent = text;
+  el.classList.add('on');
+}
+function hideLoading() { $('loading').classList.remove('on'); }
+
+oszInput.onchange = async () => {
+  const f = oszInput.files[0];
+  if (!f) return;
+  showLoading('正在解包 ' + f.name + ' …');
+  await new Promise(r => setTimeout(r, 30));   // 让 loading 先画出来
+  try {
+    await loadOsz(f);
+    toast('已载入：' + oszCharts.length + ' 个难度 · ' + importOsu.chart.length + ' 音符');
+  } catch (err) {
+    oszCharts = []; oszIndex = 0; importSource = ''; importOsu = null; customBuffer = null; bgImage = null;
+    renderOszList();
+    toast('谱面包载入失败：' + err.message);
+  }
+  hideLoading();
+  refreshImport();
+  oszInput.value = '';
+};
+
+osuInput.onchange = async () => {
+  const f = osuInput.files[0];
+  if (!f) return;
+  try {
+    const c = parseOsu(await f.text());
+    c.file = f.name;
+    oszCharts = [c];
+    oszIndex = 0;
+    importSource = 'osu';
+    applyOszDiff(0);
+    renderOszList();
+    toast('谱面已解析：' + c.chart.length + ' 个音符，还需选一个音频文件');
+  } catch (err) {
+    toast('谱面解析失败：' + err.message);
+    importOsu = null;
+  }
+  refreshImport();
+  osuInput.value = '';
+};
+
+audioInput.onchange = async () => {
+  const f = audioInput.files[0];
+  if (!f) return;
+  Audio2.init();
+  if (!Audio2.ctx) { toast('当前环境不支持音频解码，无法导入谱面'); return; }
+  showLoading('正在解码音频 ' + f.name + ' …');
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    const ab = await f.arrayBuffer();
+    customBuffer = await Audio2.ctx.decodeAudioData(ab);
+    toast('音频已加载：' + customBuffer.duration.toFixed(1) + 's');
+  } catch (err) {
+    toast('音频解码失败：' + err.message);
+    customBuffer = null;
+  }
+  hideLoading();
+  refreshImport();
+  audioInput.value = '';
+};
+
+function refreshImport() {
+  const ready = !!(importOsu && customBuffer);
+  if (!ready) useCustom = false;
+
+  $('pickOsz').classList.toggle('ok', importSource === 'osz');
+  $('pickOsu').classList.toggle('ok', importSource === 'osu');
+  $('pickAudio').classList.toggle('ok', !!customBuffer);
+
+  $('importInfo').innerHTML = ready
+    ? '<span style="color:var(--good)">✓ 就绪：' + importOsu.chart.length + ' 音符 · AR ' + importOsu.ar +
+      ' / OD ' + importOsu.od + ' / CS ' + importOsu.cs +
+      (customBuffer ? ' · 音频 ' + customBuffer.duration.toFixed(1) + 's' : '') + '</span>'
+    : '支持 osu!standard（Mode 0）的 HitCircle / Slider 起点';
+
+  $('useCustomBtn').classList.toggle('hidden', !ready);
+  $('useCustomBtn').textContent = useCustom ? '✓ 正在使用导入谱面' : '改用导入谱面';
+  $('playBtn').textContent = (useCustom && ready) ? '开始游戏（导入谱面）' : '开始游戏';
+}
+
+/* ---- .osu 文本解析 ----
+   按 osu! 官方公式把 AR / OD / CS 换算成缩圈时间、判定窗口与圈径。 */
+function parseOsu(text) {
+  const lines = text.split(/\r?\n/);
+  let section = '';
+  const res = { title: '', artist: '', version: '', audioFile: '', bgFile: '', ar: 5, od: 5, cs: 4, raw: [] };
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li].trim();
+    if (!line || line.startsWith('//')) continue;
+    if (line.startsWith('[')) { section = line.slice(1, -1); continue; }
+
+    if (section === 'General' || section === 'Metadata' || section === 'Difficulty') {
+      const ci = line.indexOf(':');
+      if (ci < 0) continue;
+      const key = line.slice(0, ci).trim();
+      const val = line.slice(ci + 1).trim();
+      if (section === 'General') {
+        if (key === 'AudioFilename') res.audioFile = val;
+        if (key === 'Mode' && parseInt(val, 10) !== 0) throw new Error('只支持 osu!standard 模式（Mode 0）');
+      } else if (section === 'Metadata') {
+        if (key === 'Title' && val) res.title = val;
+        if (key === 'Artist' && val) res.artist = val;
+        if (key === 'Version' && val) res.version = val;
+      } else {
+        const num = parseFloat(val);
+        if (isNaN(num)) continue;
+        if (key === 'ApproachRate') res.ar = clamp(num, 0, 10);
+        if (key === 'OverallDifficulty') res.od = clamp(num, 0, 10);
+        if (key === 'CircleSize') res.cs = clamp(num, 2, 7);
+      }
+    } else if (section === 'Events') {
+      // 背景图声明形如 0,0,"bg.jpg",0,0
+      const m = line.match(/"(?:.*[\\/])?([^"\\/]+\.(?:jpe?g|png|gif|webp))"/i);
+      if (m && !res.bgFile) res.bgFile = m[1];
+    } else if (section === 'HitObjects') {
+      const p = line.split(',');
+      if (p.length < 4) continue;
+      const x = parseFloat(p[0]), y = parseFloat(p[1]), t = parseFloat(p[2]);
+      const type = parseInt(p[3], 10);
+      if (isNaN(x) || isNaN(y) || isNaN(t) || isNaN(type)) continue;
+      // type 位域：1=circle, 2=slider, 8=spinner, 128=hold(mania)。
+      // 只留 circle / slider 起点，spinner 与 hold 不是点击物。
+      if (type & 8) continue;
+      if (type & 128) continue;
+      res.raw.push({ x: x, y: y, t: t });     // slider 只取起点
+    }
+  }
+
+  if (!res.raw.length) throw new Error('没有解析到任何音符');
+
+  const ar = res.ar, od = res.od;
+  const preempt = ar <= 5 ? 1800 - 120 * ar : 1200 - 150 * (ar - 5);
+  const radius = clamp(54.4 - 4.48 * res.cs, 22, 46);
+  res.diff = {
+    name: res.version || 'Imported',
+    radius: radius,
+    preempt: clamp(preempt, 300, 2000),
+    w300: Math.max(16, 80 - 6 * od),
+    w100: Math.max(30, 140 - 8 * od),
+    w50: Math.max(50, 200 - 10 * od),
+    keep: 'all', drain: 0.9, gain: 3.0, miss: -8, star: 0
+  };
+
+  // 坐标裁剪要按"圆的边缘"算：只夹圆心的话，大圈会有一半跑到场地外
+  const R = radius;
+  res.chart = res.raw.map(n => ({
+    x: clamp(n.x, R + 2, VW - R - 2),
+    y: clamp(n.y, R + 2, VH - R - 2),
+    t: n.t
+  })).sort((a, b) => a.t - b.t);
+  res.raw = null;
+  return res;
+}
+
+/* ══════════════════════════════════════════════════════════
+   12. 启动
+   ══════════════════════════════════════════════════════════ */
+
+// 调试接口：浏览器控制台可用 window.RB 查看实时状态
+window.RB = {
+  get state() { return state; },
+  get songTime() { return st; },
+  get noteCount() { return notes.length; },
+  get audio() {
+    return Audio2.ctx
+      ? {
+          state: Audio2.ctx.state, clock: Audio2.ctx.currentTime, stalled: audioStalled,
+          nodes: Audio2.sources.length, evIdx: evIdx,
+          events: songData && songData.music ? songData.music.events.length : 0,
+          fps: Math.round(fpsAvg), frameMs: Math.round(frameMs)
+        }
+      : null;
+  },
+  get perf() { return { level: perf.level, fps: Math.round(fpsAvg), frameMs: +frameMs.toFixed(1), dpr: view.dpr, canvas: cv.width + 'x' + cv.height, showFps: perf.showFps }; },
+  get importState() {
+    return {
+      osz: oszCharts.length,
+      idx: oszIndex,
+      charts: oszCharts.map(c => ({ version: c.version, notes: c.chart.length, ar: c.ar, od: c.od, cs: c.cs })),
+      ready: !!(importOsu && customBuffer),
+      useCustom: useCustom,
+      audio: customBuffer ? +customBuffer.duration.toFixed(2) : null,
+      bg: !!bgImage,
+      name: customName
+    };
+  },
+  get cursorEl() {
+    const r = curEl.getBoundingClientRect();
+    return { shown: curEl.classList.contains('on'), x: +r.left.toFixed(1), y: +r.top.toFixed(1), hit: curEl.classList.contains('hit') };
+  },
+  get cursor() { return { x: +cursor.x.toFixed(1), y: +cursor.y.toFixed(1), trail: cursor.trail.length }; },
+  get settings() { return Object.assign({}, settings); },
+  get stats() { return { hp: hp, score: score, combo: combo, maxCombo: maxCombo, n300: n300, n100: n100, n50: n50, nMiss: nMiss, judged: judgedCount }; },
+  // 测试用：直接设定画质档位
+  setQuality(lv) { setPerfLevel(clamp(lv | 0, 0, 2)); return perf.level; },
+  // 测试用：确定性地设置开关，避免依赖 localStorage 初始状态
+  setAutoplay(v) { settings.autoplay = !!v; Store.set('rb_auto', v ? '1' : '0'); updateThemeUI(); syncCursorVisibility(); return settings.autoplay; },
+  setNoFail(v) { settings.nofail = !!v; Store.set('rb_nofail', v ? '1' : '0'); updateThemeUI(); return settings.nofail; },
+  get toastText() { return $('toast').textContent; },
+  get loadingOn() { return $('loading').classList.contains('on'); }
+};
+
+resize();
+updateThemeUI();
+renderSongList();
+renderDiffList();
+refreshImport();
+requestAnimationFrame(frame);
+
+// 页面隐藏时自动暂停
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && state === 'playing') pauseGame();
+});
+
+})();
+</script>
+</body>
+</html>
